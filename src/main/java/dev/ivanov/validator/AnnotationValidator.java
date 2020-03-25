@@ -1,53 +1,70 @@
 package dev.ivanov.validator;
 
+import dev.ivanov.validator.annotation.Valid;
+import dev.ivanov.validator.annotation.ValidateBy;
 import dev.ivanov.validator.api.EntityValidator;
-import dev.ivanov.validator.rule.Rule;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.util.List;
-import java.util.Map;
 
-import static java.util.function.Function.identity;
-import static java.util.stream.Collectors.toMap;
+import org.apache.commons.lang3.ClassUtils;
+
 import static org.apache.commons.lang3.reflect.FieldUtils.getAllFieldsList;
 
 public class AnnotationValidator implements EntityValidator {
-    private final Map<Class<? extends Annotation>, Rule<?>> rules;
 
-    public AnnotationValidator(List<Rule<?>> rules) {
-        this.rules = rules.stream()
-                .collect(toMap(Rule::getAnnotationClass, identity()));
-    }
+  @Override
+  public void validate(Object entity) {
+    processFields(entity, getAllFieldsList(entity.getClass()));
+  }
 
-    @Override
-    public void validate(Object entity) {
-        getAllFieldsList(entity.getClass())
-                .stream()
-                .peek(f -> f.setAccessible(true))
-                .forEach(field -> {
-                    Annotation[] annotations = field.getAnnotations();
-                    if (annotations.length == 0) return;
+  private void processFields(Object entity, List<Field> fields) {
+    processFields(entity, getAllFieldsList(entity.getClass()), "");
+  }
 
-                    Object fieldValue = getValue(field, entity);
-                    for (Annotation annotation : annotations) {
-                        doCheck(annotation, field.getName(), fieldValue);
-                    }
-                });
-    }
+  private void processFields(Object entity, List<Field> fields, String contextPath) {
+    for (Field f : fields) {
+      f.setAccessible(true);
 
-    private void doCheck(Annotation annotation, String field, Object fieldValue) {
-        Rule r = rules.get(annotation.annotationType());
-        if (r == null) return;
+      if (!f.isAnnotationPresent(Valid.class)) continue;
 
-        r.check(annotation, field, fieldValue);
-    }
+      Object fieldValue = getValue(f, entity);
 
-    private Object getValue(Field field, Object entity) {
-        try {
-            return field.get(entity);
-        } catch (IllegalAccessException e) {
-            throw new IllegalStateException(e);
+      if (fieldValue != null && !f.getType().isAssignableFrom(String.class) && !ClassUtils.isPrimitiveOrWrapper(f.getType()))
+        processFields(fieldValue, getAllFieldsList(f.getType()), f.getName() + ".");
+      else {
+        Annotation[] annotations = f.getAnnotations();
+        if (annotations.length == 0) continue;
+
+        for (Annotation annotation : annotations) {
+          if (annotation.annotationType().isAnnotationPresent(ValidateBy.class))
+            doCheck(annotation, contextPath + f.getName(), fieldValue);
         }
+      }
     }
+  }
+
+  private void doCheck(Annotation annotation, String fieldName, Object fieldValue) {
+    if (annotation.annotationType().isAnnotationPresent(ValidateBy.class)) {
+      final ValidateBy validateBy = annotation.annotationType().getAnnotation(ValidateBy.class);
+
+      try {
+        validateBy.value().newInstance().check(annotation, fieldName, fieldValue);
+      } catch (InstantiationException e) {
+        e.printStackTrace();
+      } catch (IllegalAccessException e) {
+        e.printStackTrace();
+      }
+    }
+
+  }
+
+  private Object getValue(Field field, Object entity) {
+    try {
+      return field.get(entity);
+    } catch (IllegalAccessException e) {
+      throw new IllegalStateException(e);
+    }
+  }
 }

@@ -1,51 +1,62 @@
 package dev.ivanov.validator;
 
+import dev.ivanov.validator.annotation.Length;
 import dev.ivanov.validator.annotation.NotEmpty;
-import dev.ivanov.validator.rule.NotEmptyRule;
-import org.junit.jupiter.api.BeforeEach;
+import dev.ivanov.validator.annotation.Valid;
+
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.fail;
 
-import static java.util.Collections.singletonList;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-
-@ExtendWith(MockitoExtension.class)
 public class AnnotationValidatorTest {
-    @Mock
-    NotEmptyRule notEmptyRule;
+  @Test
+  public void given_nestedObject_on_validate_should_pass() {
+    Entity entity = new Entity("1", "22", new InnerEntity("3"));
+    AnnotationValidator annotationValidator = new AnnotationValidator();
 
-    @BeforeEach
-    public void init() {
-        when(notEmptyRule.getAnnotationClass()).thenReturn(NotEmpty.class);
+    annotationValidator.validate(entity);
+  }
+
+  @Test
+  public void given_nestedObject_on_validate_should_fail() {
+    Entity entity = new Entity("1", "22", new InnerEntity(""));
+    AnnotationValidator annotationValidator = new AnnotationValidator();
+
+    try {
+      annotationValidator.validate(entity);
+      fail("Validation should be failed");
+    } catch (NullPointerException e) {
+
     }
+  }
 
-    @Test
-    public void testRulesCall() {
-        Entity entity = new Entity("1", "2");
-        AnnotationValidator annotationValidator
-                = new AnnotationValidator(singletonList(notEmptyRule));
-        annotationValidator.validate(entity);
+  private class Entity {
+    @Valid
+    @NotEmpty
+    private String firstString;
 
-        verify(notEmptyRule).getAnnotationClass();
-        verify(notEmptyRule).check(any(NotEmpty.class), eq("firstString"), eq(entity.firstString));
-        verify(notEmptyRule).check(any(NotEmpty.class), eq("second"), eq(entity.second));
+    @Valid
+    @Length(min = 2)
+    private String second;
+
+    @Valid
+    @NotEmpty
+    private InnerEntity innerEntity;
+
+    public Entity(String firstString, String second, InnerEntity innerEntity) {
+      this.firstString = firstString;
+      this.second = second;
+      this.innerEntity = innerEntity;
     }
+  }
 
-    private class Entity {
-        @NotEmpty
-        private String firstString;
+  private class InnerEntity {
+    @Valid
+    @NotEmpty
+    private String thrid;
 
-        @NotEmpty
-        private String second;
-
-        public Entity(String firstString, String second) {
-            this.firstString = firstString;
-            this.second = second;
-        }
+    public InnerEntity(String thrid) {
+      this.thrid = thrid;
     }
+  }
 }
